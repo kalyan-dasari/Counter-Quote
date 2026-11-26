@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getJob, updateJob } from '../api';
+import edgeProfilesImg from '../assets/EdgeProfiles.png';
 import { CounterCanvas } from '../components/CounterCanvas';
 import {
   CORNER_FINISHES,
@@ -74,6 +75,7 @@ export function JobPage() {
   const [dirty, setDirty] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
   const [isDrawingLines, setIsDrawingLines] = useState(false);
+  const [showEdgeGuide, setShowEdgeGuide] = useState(false);
 
   const designRef = useRef(design);
   designRef.current = design;
@@ -602,7 +604,22 @@ export function JobPage() {
               </label>
 
               <label>
-                Edge Profile
+                <span className="label-with-help">
+                  <span>Edge Profile</span>
+                  <button
+                    type="button"
+                    className="help-icon-btn"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowEdgeGuide(true);
+                    }}
+                    title="View Edge Profiles, Corners & Thickness visual guide"
+                    aria-label="View Edge Profiles visual guide"
+                  >
+                    ? View Guide
+                  </button>
+                </span>
                 <select
                   value={edgeProfile}
                   onChange={(e) => {
@@ -620,7 +637,22 @@ export function JobPage() {
               <EdgeProfilePreview profile={edgeProfile} />
 
               <label>
-                Outside Corner Finish
+                <span className="label-with-help">
+                  <span>Outside Corner Finish</span>
+                  <button
+                    type="button"
+                    className="help-icon-btn"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowEdgeGuide(true);
+                    }}
+                    title="View Corner Finish visual guide"
+                    aria-label="View Corner Finish visual guide"
+                  >
+                    ?
+                  </button>
+                </span>
                 <select
                   value={cornerFinish}
                   onChange={(e) => {
@@ -746,6 +778,34 @@ export function JobPage() {
           </div>
         </aside>
       </div>
+
+      {showEdgeGuide && (
+        <div
+          className="guide-modal-backdrop no-print"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edge Profiles, Outside Corners, and Thickness Guide"
+          onClick={() => setShowEdgeGuide(false)}
+        >
+          <div className="guide-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="guide-modal-header">
+              <strong>Edge Profiles, Corner Finish &amp; Thickness Guide</strong>
+              <button
+                type="button"
+                className="btn-chip"
+                onClick={() => setShowEdgeGuide(false)}
+              >
+                ✕ Close
+              </button>
+            </div>
+            <img
+              src={edgeProfilesImg}
+              alt="Visual guide showing Eased, Half Bullnose, Bevel, Full Bullnose, Ogee, Mitered edge profiles, Standard/Radius/Clipped outside corners, and slab thickness"
+              className="guide-modal-img"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
