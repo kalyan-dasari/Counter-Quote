@@ -156,7 +156,7 @@ public static class QuoteCalculator
         {
             PointDto a = pts[i];
             PointDto b = pts[(i + 1) % n];
-            double len = Math.Hypot(b.X - a.X, b.Y - a.Y);
+            double len = Hypot(b.X - a.X, b.Y - a.Y);
             EdgeDto edge = i < edges.Count ? edges[i] : new EdgeDto();
 
             if (string.Equals(edge.Kind, "finished", StringComparison.OrdinalIgnoreCase))
@@ -184,8 +184,8 @@ public static class QuoteCalculator
             double v2x = next.X - curr.X;
             double v2y = next.Y - curr.Y;
 
-            double len1 = Math.Hypot(v1x, v1y);
-            double len2 = Math.Hypot(v2x, v2y);
+            double len1 = Hypot(v1x, v1y);
+            double len2 = Hypot(v2x, v2y);
             if (len1 < 1e-4 || len2 < 1e-4)
                 continue;
 
@@ -283,4 +283,6 @@ public static class QuoteCalculator
         decimal total = Math.Max(subtotal, MinimumJobCharge);
         return Math.Round(total, 2, MidpointRounding.AwayFromZero);
     }
+
+    private static double Hypot(double dx, double dy) => Math.Sqrt((dx * dx) + (dy * dy));
 }
