@@ -1070,6 +1070,44 @@ export function CounterCanvas({
       </div>
 
       <div className="svg-frame">
+        <div className="canvas-hud">
+          <span className="hud-pill">
+            <span className="hud-swatch" style={{ background: materialSwatch }} />
+            {material} ({thickness}) · {edgeProfile} Edge · {cornerFinish} Corners
+          </span>
+          {selection?.kind === 'piece' && selectedPiece && selectedPieceBounds && (
+            <span className="hud-pill active-item">
+              Selected: {selectedPiece.label} ({selectedPieceBounds.width}&quot; × {selectedPieceBounds.height}&quot;)
+            </span>
+          )}
+          {selection?.kind === 'cutout' && selectedCutout && (
+            <span className="hud-pill active-item">
+              Selected: {CUTOUT_CATALOG[selectedCutout.type].label} ({selectedCutout.width}&quot; ×{' '}
+              {selectedCutout.height}&quot;)
+            </span>
+          )}
+          {selection?.kind === 'edge' && selectedPiece && (
+            <span className="hud-pill active-item">
+              Selected: Edge #{selection.edgeIndex + 1} (
+              {selectedPiece.edges[selection.edgeIndex]?.kind === 'wall'
+                ? 'Wall'
+                : `${edgeProfile} Finished`}
+              )
+            </span>
+          )}
+          {selection?.kind === 'vertex' && (
+            <span className="hud-pill active-item">Selected: Corner #{selection.vertexIndex + 1}</span>
+          )}
+          {selection?.kind === 'line' && selectedLine && (
+            <span className="hud-pill active-item">
+              Selected: Line (
+              {formatInches(
+                Math.hypot(selectedLine.x2 - selectedLine.x1, selectedLine.y2 - selectedLine.y1),
+              )}
+              )
+            </span>
+          )}
+        </div>
         <svg
           ref={svgRef}
           className={`counter-svg ${isDrawingLines ? 'drawing' : ''}`}
@@ -1735,9 +1773,10 @@ export function CounterCanvas({
         </svg>
 
         <div className="canvas-legend">
-          <span><i className="legend-swatch finished" /> Finished Edge</span>
+          <span><i className="legend-swatch finished" /> Finished Edge ({edgeProfile})</span>
           <span><i className="legend-swatch wall" /> Wall Edge</span>
           <span><i className="legend-swatch splash" /> 4" Backsplash</span>
+          <span>Corners: <strong>{cornerFinish}</strong></span>
           <span className="muted">
             Click countertop or cutout to move &amp; resize · Drag corners to reshape · Click any edge to toggle wall/finished
           </span>
