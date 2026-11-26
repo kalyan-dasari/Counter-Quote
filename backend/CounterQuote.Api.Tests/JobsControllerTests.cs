@@ -163,4 +163,44 @@ public class JobsControllerTests : IDisposable
         Assert.Equal(2, metrics.AngledCorners);
         Assert.Equal(13.0, metrics.AreaSqFt); // trapezoid (72 + 84)/2 * 24 / 144 = 13 sq ft
     }
+
+    [Fact]
+    public void Multi_piece_design_sums_area_edges_and_corners_across_elements()
+    {
+        string multiPieceJson = """
+        {
+          "pieces": [
+            {
+              "id": "p1",
+              "label": "Main",
+              "points": [{"x":0,"y":0},{"x":72,"y":0},{"x":72,"y":24},{"x":0,"y":24}],
+              "edges": [
+                {"kind":"wall","backsplash":true},
+                {"kind":"finished","backsplash":false},
+                {"kind":"finished","backsplash":false},
+                {"kind":"finished","backsplash":false}
+              ]
+            },
+            {
+              "id": "p2",
+              "label": "Island",
+              "points": [{"x":0,"y":48},{"x":72,"y":48},{"x":72,"y":84},{"x":0,"y":84}],
+              "edges": [
+                {"kind":"finished","backsplash":false},
+                {"kind":"finished","backsplash":false},
+                {"kind":"finished","backsplash":false},
+                {"kind":"finished","backsplash":false}
+              ]
+            }
+          ],
+          "cutouts": []
+        }
+        """;
+
+        GeometryMetrics metrics = QuoteCalculator.ComputeMetrics(QuoteCalculator.ParseDesign(multiPieceJson)!);
+        Assert.Equal(30.0, metrics.AreaSqFt); // 12 sq ft + 18 sq ft
+        Assert.Equal(28.0, metrics.FinishedEdgeLinFt); // 10 ft + 18 ft
+        Assert.Equal(6.0, metrics.BacksplashLinFt);
+        Assert.Equal(6, metrics.OutsideFinishedCorners); // 2 + 4
+    }
 }

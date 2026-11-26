@@ -7,12 +7,22 @@ public record PointDto(double X, double Y);
 
 public record EdgeDto(string Kind = "finished", bool Backsplash = false);
 
+public record CounterPieceDto(
+    string Id = "p1",
+    string Label = "Counter",
+    List<PointDto>? Points = null,
+    List<EdgeDto>? Edges = null);
+
 public record CutoutDto(string Id = "", string Type = "undermount_sink", double X = 0, double Y = 0, double Width = 30, double Height = 18, double Rotation = 0);
 
+public record ReferenceLineDto(string Id = "", double X1 = 0, double Y1 = 0, double X2 = 0, double Y2 = 0);
+
 public record CounterDesignDto(
-    List<PointDto>? Points,
-    List<EdgeDto>? Edges,
-    List<CutoutDto>? Cutouts);
+    List<PointDto>? Points = null,
+    List<EdgeDto>? Edges = null,
+    List<CounterPieceDto>? Pieces = null,
+    List<CutoutDto>? Cutouts = null,
+    List<ReferenceLineDto>? Lines = null);
 
 public record GeometryMetrics(
     double AreaSqFt,
@@ -85,12 +95,13 @@ public static class QuoteCalculator
     public const double UsableSqFtPerSlab = 50.0;
 
     /// <summary>
-    /// Parses the stored polygon and cutout design and computes geometric and pricing totals on the job.
+    /// Parses the stored countertop pieces, cutouts, and computes geometric and pricing totals on the job.
     /// </summary>
     public static void ApplyQuote(Job job)
     {
         CounterDesignDto? design = ParseDesign(job.DesignJson);
-        if (design is null || design.Points is null || design.Points.Count < 3)
+        List<CounterPieceDto> pieces = design is null ? [] : GetPieces(design);
+        if (design is null || pieces.Count == 0)
         {
             job.AreaSqFt = 0;
             job.FinishedEdgeLinFt = 0;
@@ -129,96 +140,115 @@ public static class QuoteCalculator
         }
     }
 
+    public static List<CounterPieceDto> GetPieces(CounterDesignDto design)
+    {
+        if (design.Pieces is { Count: > 0 })
+        {
+            return design.Pieces.Where(p => p.Points is { Count: >= 3 }).ToList();
+        }
+
+        if (design.Points is { Count: >= 3 })
+        {
+            return [new CounterPieceDto("p1", "Main Counter", design.Points, design.Edges)];
+        }
+
+        return [];
+    }
+
     public static GeometryMetrics ComputeMetrics(CounterDesignDto design)
     {
-        List<PointDto> pts = design.Points ?? [];
-        int n = pts.Count;
-        if (n < 3)
+        List<CounterPieceDto> pieces = GetPieces(design);
+        if (pieces.Count == 0)
             return new GeometryMetrics(0, 0, 0, 0, 0, 0, 0, 0);
 
-        double signedArea2 = 0;
-        for (int i = 0; i < n; i++)
-        {
-            PointDto a = pts[i];
-            PointDto b = pts[(i + 1) % n];
-            signedArea2 += (a.X * b.Y) - (b.X * a.Y);
-        }
-
-        double areaSqIn = Math.Abs(signedArea2) / 2.0;
-        double areaSqFt = Math.Round(areaSqIn / 144.0, 2);
-        double orientationSign = signedArea2 >= 0 ? 1.0 : -1.0;
-
-        List<EdgeDto> edges = design.Edges ?? [];
+        double totalAreaSqIn = 0;
         double finishedInches = 0;
         double backsplashInches = 0;
-
-        for (int i = 0; i < n; i++)
-        {
-            PointDto a = pts[i];
-            PointDto b = pts[(i + 1) % n];
-            double len = Hypot(b.X - a.X, b.Y - a.Y);
-            EdgeDto edge = i < edges.Count ? edges[i] : new EdgeDto();
-
-            if (string.Equals(edge.Kind, "finished", StringComparison.OrdinalIgnoreCase))
-            {
-                finishedInches += len;
-            }
-            else if (string.Equals(edge.Kind, "wall", StringComparison.OrdinalIgnoreCase) && edge.Backsplash)
-            {
-                backsplashInches += len;
-            }
-        }
-
         int insideCorners = 0;
         int outsideFinishedCorners = 0;
         int angledCorners = 0;
 
-        for (int i = 0; i < n; i++)
+        foreach (CounterPieceDto piece in pieces)
         {
-            PointDto prev = pts[(i - 1 + n) % n];
-            PointDto curr = pts[i];
-            PointDto next = pts[(i + 1) % n];
-
-            double v1x = curr.X - prev.X;
-            double v1y = curr.Y - prev.Y;
-            double v2x = next.X - curr.X;
-            double v2y = next.Y - curr.Y;
-
-            double len1 = Hypot(v1x, v1y);
-            double len2 = Hypot(v2x, v2y);
-            if (len1 < 1e-4 || len2 < 1e-4)
+            List<PointDto> pts = piece.Points ?? [];
+            int n = pts.Count;
+            if (n < 3)
                 continue;
 
-            double cross = (v1x * v2y) - (v1y * v2x);
-            double dot = (v1x * v2x) + (v1y * v2y);
-            double turnAngleDeg = Math.Abs(Math.Atan2(Math.Abs(cross), dot) * (180.0 / Math.PI));
-
-            // Ignore nearly collinear vertices.
-            if (turnAngleDeg < 5.0 || turnAngleDeg > 175.0)
-                continue;
-
-            double orientedCross = cross * orientationSign;
-            if (orientedCross < -1e-4)
+            double signedArea2 = 0;
+            for (int i = 0; i < n; i++)
             {
-                insideCorners++;
+                PointDto a = pts[i];
+                PointDto b = pts[(i + 1) % n];
+                signedArea2 += (a.X * b.Y) - (b.X * a.Y);
             }
-            else if (orientedCross > 1e-4)
+
+            totalAreaSqIn += Math.Abs(signedArea2) / 2.0;
+            double orientationSign = signedArea2 >= 0 ? 1.0 : -1.0;
+
+            List<EdgeDto> edges = piece.Edges ?? [];
+            for (int i = 0; i < n; i++)
             {
-                EdgeDto prevEdge = ((i - 1 + n) % n) < edges.Count ? edges[(i - 1 + n) % n] : new EdgeDto();
-                EdgeDto nextEdge = i < edges.Count ? edges[i] : new EdgeDto();
-                if (string.Equals(prevEdge.Kind, "finished", StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(nextEdge.Kind, "finished", StringComparison.OrdinalIgnoreCase))
+                PointDto a = pts[i];
+                PointDto b = pts[(i + 1) % n];
+                double len = Hypot(b.X - a.X, b.Y - a.Y);
+                EdgeDto edge = i < edges.Count ? edges[i] : new EdgeDto();
+
+                if (string.Equals(edge.Kind, "finished", StringComparison.OrdinalIgnoreCase))
                 {
-                    outsideFinishedCorners++;
+                    finishedInches += len;
+                }
+                else if (string.Equals(edge.Kind, "wall", StringComparison.OrdinalIgnoreCase) && edge.Backsplash)
+                {
+                    backsplashInches += len;
                 }
             }
 
-            if (Math.Abs(turnAngleDeg - 90.0) > 2.0)
+            for (int i = 0; i < n; i++)
             {
-                angledCorners++;
+                PointDto prev = pts[(i - 1 + n) % n];
+                PointDto curr = pts[i];
+                PointDto next = pts[(i + 1) % n];
+
+                double v1x = curr.X - prev.X;
+                double v1y = curr.Y - prev.Y;
+                double v2x = next.X - curr.X;
+                double v2y = next.Y - curr.Y;
+
+                if (Hypot(v1x, v1y) < 1e-4 || Hypot(v2x, v2y) < 1e-4)
+                    continue;
+
+                double cross = (v1x * v2y) - (v1y * v2x);
+                double dot = (v1x * v2x) + (v1y * v2y);
+                double turnAngleDeg = Math.Abs(Math.Atan2(Math.Abs(cross), dot) * (180.0 / Math.PI));
+
+                if (turnAngleDeg < 5.0 || turnAngleDeg > 175.0)
+                    continue;
+
+                double orientedCross = cross * orientationSign;
+                if (orientedCross < -1e-4)
+                {
+                    insideCorners++;
+                }
+                else if (orientedCross > 1e-4)
+                {
+                    EdgeDto prevEdge = ((i - 1 + n) % n) < edges.Count ? edges[(i - 1 + n) % n] : new EdgeDto();
+                    EdgeDto nextEdge = i < edges.Count ? edges[i] : new EdgeDto();
+                    if (string.Equals(prevEdge.Kind, "finished", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(nextEdge.Kind, "finished", StringComparison.OrdinalIgnoreCase))
+                    {
+                        outsideFinishedCorners++;
+                    }
+                }
+
+                if (Math.Abs(turnAngleDeg - 90.0) > 2.0)
+                {
+                    angledCorners++;
+                }
             }
         }
 
+        double areaSqFt = Math.Round(totalAreaSqIn / 144.0, 2);
         int cutoutCount = design.Cutouts?.Count ?? 0;
         int estimatedSlabs = areaSqFt > 0
             ? (int)Math.Ceiling((areaSqFt * (1.0 + (double)WasteFactor)) / UsableSqFtPerSlab)

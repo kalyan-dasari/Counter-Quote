@@ -1,4 +1,13 @@
-import type { CounterDesign, CounterEdge, CutoutType, Job, Point, ShapeType } from './types';
+import type {
+  CounterDesign,
+  CounterEdge,
+  CounterPiece,
+  CutoutType,
+  Job,
+  Point,
+  ReferenceLine,
+  ShapeType,
+} from './types';
 
 export interface MaterialOption {
   name: string;
@@ -77,6 +86,14 @@ export const REMOVAL_RATE_PER_SQ_FT = 10;
 export const MINIMUM_JOB_CHARGE = 550;
 export const USABLE_SQ_FT_PER_SLAB = 50;
 
+export interface CornerAngleInfo {
+  pieceId: string;
+  index: number;
+  angleDeg: number;
+  isInside: boolean;
+  isAngled: boolean;
+}
+
 export interface GeometryMetrics {
   areaSqFt: number;
   finishedEdgeLinFt: number;
@@ -86,7 +103,7 @@ export interface GeometryMetrics {
   angledCorners: number;
   cutoutCount: number;
   estimatedSlabs: number;
-  cornerAngles: Array<{ index: number; angleDeg: number; isInside: boolean; isAngled: boolean }>;
+  cornerAngles: CornerAngleInfo[];
 }
 
 export interface QuoteLineItem {
@@ -115,15 +132,29 @@ export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 }
 
-export function createRectangleDesign(width = 72, depth = 25.5, isIsland = false): CounterDesign {
+export function createPieceId(): string {
+  return `piece_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function createRectanglePiece(
+  width = 72,
+  depth = 25.5,
+  isIsland = false,
+  offsetX = 0,
+  offsetY = 0,
+  label = 'Counter',
+  id = 'p1',
+): CounterPiece {
   const w = Math.max(12, width);
   const d = Math.max(12, depth);
   return {
+    id,
+    label,
     points: [
-      { x: 0, y: 0 },
-      { x: w, y: 0 },
-      { x: w, y: d },
-      { x: 0, y: d },
+      { x: round2(offsetX), y: round2(offsetY) },
+      { x: round2(offsetX + w), y: round2(offsetY) },
+      { x: round2(offsetX + w), y: round2(offsetY + d) },
+      { x: round2(offsetX), y: round2(offsetY + d) },
     ],
     edges: [
       { kind: isIsland ? 'finished' : 'wall', backsplash: !isIsland },
@@ -131,7 +162,58 @@ export function createRectangleDesign(width = 72, depth = 25.5, isIsland = false
       { kind: 'finished', backsplash: false },
       { kind: 'finished', backsplash: false },
     ],
+  };
+}
+
+export function createRectangleDesign(width = 72, depth = 25.5, isIsland = false): CounterDesign {
+  return {
+    pieces: [createRectanglePiece(width, depth, isIsland, 0, 0, isIsland ? 'Island' : 'Main Counter', 'p1')],
     cutouts: [],
+    lines: [],
+  };
+}
+
+export function createLShapePiece(
+  topWidth = 108,
+  topDepth = 25.5,
+  leftLength = 78,
+  leftDepth = 25.5,
+  angleDeg = 90,
+  label = 'Main Counter',
+  id = 'p1',
+): CounterPiece {
+  const tw = Math.max(36, topWidth);
+  const td = Math.max(12, topDepth);
+  const ll = Math.max(36, leftLength);
+  const ld = Math.max(12, leftDepth);
+  const clampedAngle = Math.min(135, Math.max(45, angleDeg));
+  const theta = (clampedAngle * Math.PI) / 180;
+  const ux = Math.cos(theta);
+  const uy = Math.sin(theta);
+  const nx = Math.sin(theta);
+  const ny = -Math.cos(theta);
+
+  const p0: Point = { x: 0, y: 0 };
+  const p1: Point = { x: tw, y: 0 };
+  const p2: Point = { x: tw, y: td };
+  const p5: Point = { x: round2(ll * ux), y: round2(ll * uy) };
+  const p4: Point = { x: round2(p5.x + ld * nx), y: round2(p5.y + ld * ny) };
+
+  const t = Math.abs(uy) > 1e-4 ? (p4.y - td) / uy : 0;
+  const p3: Point = { x: round2(p4.x - t * ux), y: round2(td) };
+
+  return {
+    id,
+    label,
+    points: [p0, p1, p2, p3, p4, p5],
+    edges: [
+      { kind: 'wall', backsplash: true },
+      { kind: 'finished', backsplash: false },
+      { kind: 'finished', backsplash: false },
+      { kind: 'finished', backsplash: false },
+      { kind: 'finished', backsplash: false },
+      { kind: 'wall', backsplash: true },
+    ],
   };
 }
 
@@ -142,54 +224,29 @@ export function createLShapeDesign(
   leftDepth = 25.5,
   angleDeg = 90,
 ): CounterDesign {
-  const tw = Math.max(36, topWidth);
-  const td = Math.max(12, topDepth);
-  const ll = Math.max(36, leftLength);
-  const ld = Math.max(12, leftDepth);
-  const clampedAngle = Math.min(135, Math.max(45, angleDeg));
-  const theta = (clampedAngle * Math.PI) / 180;
-  const ux = Math.cos(theta);
-  const uy = Math.sin(theta);
-  // Inward perpendicular vector pointing right when angle is 90 deg.
-  const nx = Math.sin(theta);
-  const ny = -Math.cos(theta);
-
-  const p0: Point = { x: 0, y: 0 };
-  const p1: Point = { x: tw, y: 0 };
-  const p2: Point = { x: tw, y: td };
-  const p5: Point = { x: round2(ll * ux), y: round2(ll * uy) };
-  const p4: Point = { x: round2(p5.x + ld * nx), y: round2(p5.y + ld * ny) };
-
-  // Inside corner p3: intersection of y = td and line through p4 in direction -u.
-  const t = Math.abs(uy) > 1e-4 ? (p4.y - td) / uy : 0;
-  const p3: Point = { x: round2(p4.x - t * ux), y: round2(td) };
-
   return {
-    points: [p0, p1, p2, p3, p4, p5],
-    edges: [
-      { kind: 'wall', backsplash: true },
-      { kind: 'finished', backsplash: false },
-      { kind: 'finished', backsplash: false },
-      { kind: 'finished', backsplash: false },
-      { kind: 'finished', backsplash: false },
-      { kind: 'wall', backsplash: true },
-    ],
+    pieces: [createLShapePiece(topWidth, topDepth, leftLength, leftDepth, angleDeg)],
     cutouts: [],
+    lines: [],
   };
 }
 
-export function createUShapeDesign(
+export function createUShapePiece(
   backWidth = 108,
   leftLength = 72,
   rightLength = 72,
   depth = 25.5,
-): CounterDesign {
+  label = 'Main Counter',
+  id = 'p1',
+): CounterPiece {
   const bw = Math.max(60, backWidth);
   const d = Math.max(12, depth);
   const ll = Math.max(d + 18, leftLength);
   const rl = Math.max(d + 18, rightLength);
 
   return {
+    id,
+    label,
     points: [
       { x: 0, y: 0 },
       { x: bw, y: 0 },
@@ -210,7 +267,19 @@ export function createUShapeDesign(
       { kind: 'finished', backsplash: false },
       { kind: 'wall', backsplash: true },
     ],
+  };
+}
+
+export function createUShapeDesign(
+  backWidth = 108,
+  leftLength = 72,
+  rightLength = 72,
+  depth = 25.5,
+): CounterDesign {
+  return {
+    pieces: [createUShapePiece(backWidth, leftLength, rightLength, depth)],
     cutouts: [],
+    lines: [],
   };
 }
 
@@ -225,30 +294,89 @@ export function createDefaultDesignForShape(shape: ShapeType | string): CounterD
   }
 }
 
+function normalizeEdges(points: Point[], rawEdges?: Partial<CounterEdge>[]): CounterEdge[] {
+  return points.map((_, i) => {
+    const e = rawEdges?.[i];
+    return {
+      kind: e?.kind === 'wall' ? 'wall' : 'finished',
+      backsplash: Boolean(e?.backsplash),
+    };
+  });
+}
+
 export function parseDesignJson(designJson?: string): CounterDesign {
   if (!designJson) return createRectangleDesign();
   try {
-    const parsed = JSON.parse(designJson) as Partial<CounterDesign>;
-    const points = Array.isArray(parsed.points) ? parsed.points : [];
-    const edges: CounterEdge[] = points.map((_, i) => {
-      const e = parsed.edges?.[i];
-      return {
-        kind: e?.kind === 'wall' ? 'wall' : 'finished',
-        backsplash: Boolean(e?.backsplash),
-      };
-    });
+    const parsed = JSON.parse(designJson) as Partial<CounterDesign> & {
+      points?: Point[];
+      edges?: Partial<CounterEdge>[];
+    };
+
     const cutouts = Array.isArray(parsed.cutouts) ? parsed.cutouts : [];
-    if (points.length < 3) return createRectangleDesign();
-    return { points, edges, cutouts };
+    const lines: ReferenceLine[] = Array.isArray(parsed.lines) ? parsed.lines : [];
+
+    if (Array.isArray(parsed.pieces) && parsed.pieces.length > 0) {
+      const pieces = parsed.pieces
+        .filter((p) => Array.isArray(p.points) && p.points.length >= 3)
+        .map((p, idx) => ({
+          id: p.id || `p${idx + 1}`,
+          label: p.label || `Piece ${idx + 1}`,
+          points: p.points,
+          edges: normalizeEdges(p.points, p.edges),
+        }));
+      if (pieces.length > 0) {
+        return { pieces, cutouts, lines };
+      }
+    }
+
+    if (Array.isArray(parsed.points) && parsed.points.length >= 3) {
+      return {
+        pieces: [
+          {
+            id: 'p1',
+            label: 'Main Counter',
+            points: parsed.points,
+            edges: normalizeEdges(parsed.points, parsed.edges),
+          },
+        ],
+        cutouts,
+        lines,
+      };
+    }
+
+    return createRectangleDesign();
   } catch {
     return createRectangleDesign();
   }
 }
 
+export function getPieceBounds(points: Point[]) {
+  if (points.length === 0) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
+  }
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: round2(maxX - minX),
+    height: round2(maxY - minY),
+  };
+}
+
 export function computeGeometryMetrics(design: CounterDesign): GeometryMetrics {
-  const pts = design.points;
-  const n = pts.length;
-  if (n < 3) {
+  const pieces = design.pieces.filter((p) => p.points.length >= 3);
+  if (pieces.length === 0) {
     return {
       areaSqFt: 0,
       finishedEdgeLinFt: 0,
@@ -262,76 +390,82 @@ export function computeGeometryMetrics(design: CounterDesign): GeometryMetrics {
     };
   }
 
-  let signedArea2 = 0;
-  for (let i = 0; i < n; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % n];
-    signedArea2 += a.x * b.y - b.x * a.y;
-  }
-
-  const areaSqIn = Math.abs(signedArea2) / 2;
-  const areaSqFt = round2(areaSqIn / 144);
-  const orientationSign = signedArea2 >= 0 ? 1 : -1;
-
+  let totalAreaSqIn = 0;
   let finishedInches = 0;
   let backsplashInches = 0;
-
-  for (let i = 0; i < n; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % n];
-    const len = Math.hypot(b.x - a.x, b.y - a.y);
-    const edge = design.edges[i] ?? { kind: 'finished', backsplash: false };
-    if (edge.kind === 'finished') {
-      finishedInches += len;
-    } else if (edge.kind === 'wall' && edge.backsplash) {
-      backsplashInches += len;
-    }
-  }
-
   let insideCorners = 0;
   let outsideFinishedCorners = 0;
   let angledCorners = 0;
-  const cornerAngles: GeometryMetrics['cornerAngles'] = [];
+  const cornerAngles: CornerAngleInfo[] = [];
 
-  for (let i = 0; i < n; i++) {
-    const prev = pts[(i - 1 + n) % n];
-    const curr = pts[i];
-    const next = pts[(i + 1) % n];
+  for (const piece of pieces) {
+    const pts = piece.points;
+    const n = pts.length;
+    if (n < 3) continue;
 
-    const v1x = curr.x - prev.x;
-    const v1y = curr.y - prev.y;
-    const v2x = next.x - curr.x;
-    const v2y = next.y - curr.y;
+    let signedArea2 = 0;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % n];
+      signedArea2 += a.x * b.y - b.x * a.y;
+    }
 
-    if (Math.hypot(v1x, v1y) < 1e-4 || Math.hypot(v2x, v2y) < 1e-4) continue;
+    totalAreaSqIn += Math.abs(signedArea2) / 2;
+    const orientationSign = signedArea2 >= 0 ? 1 : -1;
 
-    const cross = v1x * v2y - v1y * v2x;
-    const dot = v1x * v2x + v1y * v2y;
-    const turnAngleDeg = Math.abs((Math.atan2(Math.abs(cross), dot) * 180) / Math.PI);
-    if (turnAngleDeg < 5 || turnAngleDeg > 175) continue;
-
-    const orientedCross = cross * orientationSign;
-    const isInside = orientedCross < -1e-4;
-    const isAngled = Math.abs(turnAngleDeg - 90) > 2;
-
-    if (isInside) {
-      insideCorners++;
-    } else if (orientedCross > 1e-4) {
-      const prevEdge = design.edges[(i - 1 + n) % n] ?? { kind: 'finished', backsplash: false };
-      const nextEdge = design.edges[i] ?? { kind: 'finished', backsplash: false };
-      if (prevEdge.kind === 'finished' && nextEdge.kind === 'finished') {
-        outsideFinishedCorners++;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % n];
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      const edge = piece.edges[i] ?? { kind: 'finished', backsplash: false };
+      if (edge.kind === 'finished') {
+        finishedInches += len;
+      } else if (edge.kind === 'wall' && edge.backsplash) {
+        backsplashInches += len;
       }
     }
 
-    if (isAngled) {
-      angledCorners++;
-    }
+    for (let i = 0; i < n; i++) {
+      const prev = pts[(i - 1 + n) % n];
+      const curr = pts[i];
+      const next = pts[(i + 1) % n];
 
-    const interiorDeg = isInside ? Math.round(180 + turnAngleDeg) : Math.round(180 - turnAngleDeg);
-    cornerAngles.push({ index: i, angleDeg: interiorDeg, isInside, isAngled });
+      const v1x = curr.x - prev.x;
+      const v1y = curr.y - prev.y;
+      const v2x = next.x - curr.x;
+      const v2y = next.y - curr.y;
+
+      if (Math.hypot(v1x, v1y) < 1e-4 || Math.hypot(v2x, v2y) < 1e-4) continue;
+
+      const cross = v1x * v2y - v1y * v2x;
+      const dot = v1x * v2x + v1y * v2y;
+      const turnAngleDeg = Math.abs((Math.atan2(Math.abs(cross), dot) * 180) / Math.PI);
+      if (turnAngleDeg < 5 || turnAngleDeg > 175) continue;
+
+      const orientedCross = cross * orientationSign;
+      const isInside = orientedCross < -1e-4;
+      const isAngled = Math.abs(turnAngleDeg - 90) > 2;
+
+      if (isInside) {
+        insideCorners++;
+      } else if (orientedCross > 1e-4) {
+        const prevEdge = piece.edges[(i - 1 + n) % n] ?? { kind: 'finished', backsplash: false };
+        const nextEdge = piece.edges[i] ?? { kind: 'finished', backsplash: false };
+        if (prevEdge.kind === 'finished' && nextEdge.kind === 'finished') {
+          outsideFinishedCorners++;
+        }
+      }
+
+      if (isAngled) {
+        angledCorners++;
+      }
+
+      const interiorDeg = isInside ? Math.round(180 + turnAngleDeg) : Math.round(180 - turnAngleDeg);
+      cornerAngles.push({ pieceId: piece.id, index: i, angleDeg: interiorDeg, isInside, isAngled });
+    }
   }
 
+  const areaSqFt = round2(totalAreaSqIn / 144);
   const estimatedSlabs =
     areaSqFt > 0 ? Math.ceil((areaSqFt * (1 + WASTE_FACTOR)) / USABLE_SQ_FT_PER_SLAB) : 0;
 

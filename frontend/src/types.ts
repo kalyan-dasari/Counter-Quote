@@ -14,6 +14,13 @@ export interface CounterEdge {
   backsplash: boolean;
 }
 
+export interface CounterPiece {
+  id: string;
+  label: string;
+  points: Point[];
+  edges: CounterEdge[];
+}
+
 export interface Cutout {
   id: string;
   type: CutoutType;
@@ -24,10 +31,18 @@ export interface Cutout {
   rotation: number;
 }
 
+export interface ReferenceLine {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 export interface CounterDesign {
-  points: Point[];
-  edges: CounterEdge[];
+  pieces: CounterPiece[];
   cutouts: Cutout[];
+  lines: ReferenceLine[];
 }
 
 export interface Job {
