@@ -1,8 +1,7 @@
 # Answers
 
 - **Name:** Dasari Kalyan
-- **Email** (the one you applied with): kalyandasari272@gmail.com
-- **Phone** (optional): 7799644557
+- **Email** : kalyandasari272@gmail.com
 
 ## 1. What did you need to research, and how did you do it?
 
