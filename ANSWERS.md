@@ -65,9 +65,14 @@ From a fresh unzip, install **.NET SDK 8.0+** and **Node.js 20.19+ / 22.12+** (o
    - **Parametric + angled presets:** Switch between **Rectangle**, **L-Shape** (adjustable **Corner Angle °** from 45°–135° for non-90° walls), **U-Shape**, and **Draw Lines / Custom**.
    - **Click any item to move & resize:** Click a countertop piece to drag-move or resize via 8 bounding-box handles or `Width`/`Depth`/`X`/`Y` inputs; click a cutout to drag-move or resize via corner handles or `Width`/`Height` inputs; click an edge to edit length, toggle **Finished vs. Wall**, toggle **4" Backsplash**, **+ Split Edge**, or add a **+ 6" Bumpout**; drag any corner vertex freely.
    - **Multi-element & line drawing:** Click **+ Counter Piece** to add islands/sections, or **✎ Draw Lines** to draw 2-point seam/reference lines or close ≥3 points into a new quoted counter piece.
-   - **Undo / Redo & shortcuts:** Full **Undo (`Ctrl+Z`) / Redo (`Ctrl+Y`)**, `Delete`/`Backspace` to remove the selected item, live SVG **Edge Profile** cross-section preview, >120" slab-run seam advisory, and print-ready **Print Quote** layout.
+   - **Undo / Redo & shortcuts:** Full **Undo (`Ctrl+Z`) / Redo (`Ctrl+Y`)**, `Delete`/`Backspace` to remove the selected item, live SVG **Edge Profile** cross-section preview + **`? View Guide`** visual reference modal, on-canvas Spec & Selection HUD, >120" slab-run seam advisory, and print-ready **Print Quote** layout.
 3. **Known limitations:** Freehand polygons assume non-self-intersecting outlines; `Print Quote` relies on browser print-to-PDF.
 
 ## Screenshots
 
-*(Add 2–3 screenshots of the running app here before submitting.)*
+- [`screenshots/ScreenshotCanvas.png`](screenshots/ScreenshotCanvas.png) — Interactive U-shape Quartzite drawing workspace with live dimensions, inside-corner detection, seam reference line, sink & cooktop cutouts, edge profile preview, and `? View Guide` trigger.
+- [`screenshots/ScreenshotPrint.png`](screenshots/ScreenshotPrint.png) — Print-ready quote layout combining the countertop drawing, specifications, measured geometry, and itemized quote breakdown.
+
+![Interactive Drawing Canvas & Specifications](screenshots/ScreenshotCanvas.png)
+
+![Print-Ready Quote Layout](screenshots/ScreenshotPrint.png)
