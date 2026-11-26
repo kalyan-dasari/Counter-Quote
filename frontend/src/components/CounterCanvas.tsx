@@ -1,6 +1,6 @@
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CUTOUT_CATALOG, type GeometryMetrics, MATERIALS, formatInches, round2 } from '../quote';
-import type { CounterDesign, Cutout, CutoutType, Point } from '../types';
+import type { CounterDesign, Cutout, CutoutType, EdgeKind, Point } from '../types';
 
 interface CounterCanvasProps {
   design: CounterDesign;
@@ -281,7 +281,7 @@ export function CounterCanvas({
   const toggleEdgeKind = (idx: number) => {
     const nextEdges = design.edges.map((edge, i) => {
       if (i !== idx) return edge;
-      const nextKind = edge.kind === 'finished' ? 'wall' : 'finished';
+      const nextKind: EdgeKind = edge.kind === 'finished' ? 'wall' : 'finished';
       return { kind: nextKind, backsplash: nextKind === 'wall' ? true : false };
     });
     onDesignChange({ ...design, edges: nextEdges });
