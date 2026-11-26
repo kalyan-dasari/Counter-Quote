@@ -23,6 +23,19 @@ namespace CounterQuote.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("AngledCorners")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("AreaSqFt")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("BacksplashLinFt")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("CornerFinish")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("TEXT");
 
@@ -30,8 +43,49 @@ namespace CounterQuote.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("CutoutCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DesignJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EdgeProfile")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("FinishedEdgeLinFt")
+                        .HasColumnType("REAL");
+
+                    b.Property<bool>("IncludeRemoval")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IncludeTemplating")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("InsideCorners")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Material")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("OutsideFinishedCorners")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ShapeType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Thickness")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("TotalPrice")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
