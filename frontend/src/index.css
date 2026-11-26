@@ -128,6 +128,7 @@ th { font-weight: 600; background: #eef1f4; color: #334155; }
 /* Buttons & chips */
 .toolbar-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .toolbar-label { font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.03em; }
+.toolbar-divider { width: 1px; height: 20px; background: #cbd5e1; margin: 0 2px; }
 
 .btn-tab, .btn-chip, .btn-icon {
   background: #f8fafc;
@@ -205,10 +206,32 @@ th { font-weight: 600; background: #eef1f4; color: #334155; }
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 10px 12px;
   background: #fffbeb;
   border-top: 1px solid #fde68a;
+}
+.selection-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.selection-fields label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #78350f;
+}
+.selection-fields input[type="number"] {
+  width: 66px;
+  padding: 3px 5px;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  font: inherit;
+  background: #fff;
 }
 
 /* Specs & Quote Sidebar */

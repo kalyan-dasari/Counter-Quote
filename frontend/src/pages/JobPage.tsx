@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getJob, updateJob } from '../api';
 import { CounterCanvas } from '../components/CounterCanvas';
@@ -13,9 +13,12 @@ import {
   createRectangleDesign,
   createUShapeDesign,
   formatCurrency,
+  getPieceBounds,
   parseDesignJson,
 } from '../quote';
 import type { CounterDesign, Job, ShapeType } from '../types';
+
+const MAX_HISTORY = 50;
 
 export function JobPage() {
   const id = Number(useParams().id);
@@ -31,10 +34,15 @@ export function JobPage() {
   const [includeRemoval, setIncludeRemoval] = useState(false);
   const [shapeType, setShapeType] = useState<ShapeType>('rectangle');
   const [design, setDesign] = useState<CounterDesign>(() => createRectangleDesign());
+  const [past, setPast] = useState<CounterDesign[]>([]);
+  const [future, setFuture] = useState<CounterDesign[]>([]);
   const [notes, setNotes] = useState('');
   const [dirty, setDirty] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
-  const [isDrawingCustom, setIsDrawingCustom] = useState(false);
+  const [isDrawingLines, setIsDrawingLines] = useState(false);
+
+  const designRef = useRef(design);
+  designRef.current = design;
 
   // Parametric dimensions for quick preset editing
   const [rectWidth, setRectWidth] = useState(72);
@@ -67,19 +75,87 @@ export function JobPage() {
     setShapeType(st);
     const parsed = parseDesignJson(job.designJson);
     setDesign(parsed);
+    setPast([]);
+    setFuture([]);
     setNotes(job.notes || '');
     setDirty(false);
-    setIsDrawingCustom(false);
+    setIsDrawingLines(false);
 
-    // Sync parametric inputs roughly to loaded bounds if preset matches
-    if (st === 'rectangle' && parsed.points.length === 4) {
-      const xs = parsed.points.map((p) => p.x);
-      const ys = parsed.points.map((p) => p.y);
-      setRectWidth(Math.round((Math.max(...xs) - Math.min(...xs)) * 10) / 10);
-      setRectDepth(Math.round((Math.max(...ys) - Math.min(...ys)) * 10) / 10);
-      setRectIsland(parsed.edges.every((e) => e.kind === 'finished'));
+    if (st === 'rectangle' && parsed.pieces[0]?.points.length === 4) {
+      const b = getPieceBounds(parsed.pieces[0].points);
+      setRectWidth(b.width);
+      setRectDepth(b.height);
+      setRectIsland(parsed.pieces[0].edges.every((e) => e.kind === 'finished'));
     }
   }, [job]);
+
+  const commitDesign = useCallback(
+    (
+      next: CounterDesign,
+      options?: { recordHistory?: boolean; convertedToCustom?: boolean },
+    ) => {
+      if (options?.recordHistory !== false) {
+        setPast((prev) => [...prev.slice(-(MAX_HISTORY - 1)), designRef.current]);
+        setFuture([]);
+      }
+      if (options?.convertedToCustom) {
+        setShapeType('custom');
+      }
+      setDesign(next);
+      setDirty(true);
+    },
+    [],
+  );
+
+  const handleBeginDragHistory = useCallback(() => {
+    setPast((prev) => [...prev.slice(-(MAX_HISTORY - 1)), designRef.current]);
+    setFuture([]);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    setPast((prevPast) => {
+      if (prevPast.length === 0) return prevPast;
+      const previous = prevPast[prevPast.length - 1];
+      setFuture((prevFuture) => [designRef.current, ...prevFuture]);
+      setDesign(previous);
+      setDirty(true);
+      return prevPast.slice(0, -1);
+    });
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    setFuture((prevFuture) => {
+      if (prevFuture.length === 0) return prevFuture;
+      const next = prevFuture[0];
+      setPast((prevPast) => [...prevPast.slice(-(MAX_HISTORY - 1)), designRef.current]);
+      setDesign(next);
+      setDirty(true);
+      return prevFuture.slice(1);
+    });
+  }, []);
+
+  // Keyboard shortcuts for Undo / Redo
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleUndo, handleRedo]);
 
   const saveMutation = useMutation({
     mutationFn: (payload: Job) => updateJob(payload),
@@ -135,20 +211,19 @@ export function JobPage() {
   };
 
   const selectShapePreset = (nextShape: ShapeType) => {
-    setIsDrawingCustom(false);
+    setIsDrawingLines(false);
     setShapeType(nextShape);
-    setDirty(true);
     if (nextShape === 'rectangle') {
       const next = createRectangleDesign(rectWidth, rectDepth, rectIsland);
-      setDesign({ ...next, cutouts: design.cutouts });
+      commitDesign({ ...next, cutouts: design.cutouts, lines: design.lines });
     } else if (nextShape === 'l-shape') {
       const next = createLShapeDesign(lTopWidth, lTopDepth, lLeftLen, lLeftDepth, lAngle);
-      setDesign({ ...next, cutouts: design.cutouts });
+      commitDesign({ ...next, cutouts: design.cutouts, lines: design.lines });
     } else if (nextShape === 'u-shape') {
       const next = createUShapeDesign(uBackWidth, uLeftLen, uRightLen, uDepth);
-      setDesign({ ...next, cutouts: design.cutouts });
+      commitDesign({ ...next, cutouts: design.cutouts, lines: design.lines });
     } else {
-      setIsDrawingCustom(true);
+      setIsDrawingLines(true);
     }
   };
 
@@ -157,8 +232,7 @@ export function JobPage() {
     setRectDepth(d);
     setRectIsland(island);
     const next = createRectangleDesign(w, d, island);
-    setDesign((prev) => ({ ...next, cutouts: prev.cutouts }));
-    setDirty(true);
+    commitDesign({ ...next, cutouts: design.cutouts, lines: design.lines });
   };
 
   const applyLParams = (tw: number, td: number, ll: number, ld: number, ang: number) => {
@@ -168,8 +242,7 @@ export function JobPage() {
     setLLeftDepth(ld);
     setLAngle(ang);
     const next = createLShapeDesign(tw, td, ll, ld, ang);
-    setDesign((prev) => ({ ...next, cutouts: prev.cutouts }));
-    setDirty(true);
+    commitDesign({ ...next, cutouts: design.cutouts, lines: design.lines });
   };
 
   const applyUParams = (bw: number, ll: number, rl: number, d: number) => {
@@ -178,8 +251,7 @@ export function JobPage() {
     setURightLen(rl);
     setUDepth(d);
     const next = createUShapeDesign(bw, ll, rl, d);
-    setDesign((prev) => ({ ...next, cutouts: prev.cutouts }));
-    setDirty(true);
+    commitDesign({ ...next, cutouts: design.cutouts, lines: design.lines });
   };
 
   if (error) return <p className="errors">{error.message}</p>;
@@ -225,7 +297,6 @@ export function JobPage() {
       {saveMutation.error && <p className="errors">{saveMutation.error.message}</p>}
 
       <div className="workspace-grid">
-        {/* Left: Shape Controls & Interactive Drawing Canvas */}
         <section className="drawing-column">
           <div className="card shape-panel no-print">
             <div className="shape-tabs">
@@ -234,7 +305,7 @@ export function JobPage() {
                 <button
                   key={st}
                   type="button"
-                  className={`btn-tab ${shapeType === st && !isDrawingCustom ? 'active' : ''}`}
+                  className={`btn-tab ${shapeType === st && !isDrawingLines ? 'active' : ''}`}
                   onClick={() => selectShapePreset(st)}
                 >
                   {st === 'rectangle' ? 'Rectangle' : st === 'l-shape' ? 'L-Shape' : 'U-Shape'}
@@ -242,14 +313,14 @@ export function JobPage() {
               ))}
               <button
                 type="button"
-                className={`btn-tab ${shapeType === 'custom' || isDrawingCustom ? 'active' : ''}`}
+                className={`btn-tab ${shapeType === 'custom' || isDrawingLines ? 'active' : ''}`}
                 onClick={() => selectShapePreset('custom')}
               >
-                {isDrawingCustom ? 'Drawing Custom…' : 'Draw Freehand / Custom'}
+                {isDrawingLines ? 'Drawing Lines…' : 'Draw Lines / Custom'}
               </button>
             </div>
 
-            {shapeType === 'rectangle' && !isDrawingCustom && (
+            {shapeType === 'rectangle' && !isDrawingLines && (
               <div className="param-row">
                 <label>
                   Width (in)
@@ -284,7 +355,7 @@ export function JobPage() {
               </div>
             )}
 
-            {shapeType === 'l-shape' && !isDrawingCustom && (
+            {shapeType === 'l-shape' && !isDrawingLines && (
               <div className="param-row">
                 <label>
                   Top Run (in)
@@ -354,7 +425,7 @@ export function JobPage() {
               </div>
             )}
 
-            {shapeType === 'u-shape' && !isDrawingCustom && (
+            {shapeType === 'u-shape' && !isDrawingLines && (
               <div className="param-row">
                 <label>
                   Back Width (in)
@@ -411,11 +482,12 @@ export function JobPage() {
               </div>
             )}
 
-            {shapeType === 'custom' && !isDrawingCustom && (
+            {shapeType === 'custom' && !isDrawingLines && (
               <div className="param-row">
                 <span className="muted">
-                  Custom polygon ({design.points.length} corners). Drag corners to reshape, click any edge to
-                  split/bumpout or toggle wall/finished, or click <strong>Draw Freehand / Custom</strong> to redraw.
+                  Custom layout ({design.pieces.length} piece{design.pieces.length === 1 ? '' : 's'}). Click any
+                  countertop piece or cutout to move &amp; resize it, or click <strong>+ Counter Piece</strong> /{' '}
+                  <strong>✎ Draw Lines</strong>.
                 </span>
               </div>
             )}
@@ -425,27 +497,22 @@ export function JobPage() {
             design={design}
             material={material}
             metrics={breakdown.metrics}
-            isDrawingCustom={isDrawingCustom}
-            onDesignChange={(next, convertedToCustom) => {
-              setDesign(next);
-              if (convertedToCustom) setShapeType('custom');
-              setDirty(true);
-            }}
-            onFinishCustomDraw={() => {
-              setIsDrawingCustom(false);
+            isDrawingLines={isDrawingLines}
+            canUndo={past.length > 0}
+            canRedo={future.length > 0}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onBeginDragHistory={handleBeginDragHistory}
+            onDesignChange={commitDesign}
+            onStartDrawLines={() => setIsDrawingLines(true)}
+            onFinishDrawLines={() => {
+              setIsDrawingLines(false);
               setShapeType('custom');
             }}
-            onCancelCustomDraw={() => {
-              setIsDrawingCustom(false);
-              if (design.points.length < 3) {
-                setShapeType('rectangle');
-                setDesign(createRectangleDesign());
-              }
-            }}
+            onCancelDrawLines={() => setIsDrawingLines(false)}
           />
         </section>
 
-        {/* Right: Material Options & Live Itemized Quote */}
         <aside className="quote-column">
           <div className="card">
             <h2>Specifications</h2>
@@ -527,7 +594,7 @@ export function JobPage() {
                     setDirty(true);
                   }}
                 />
-                Laser Templating & Install ($250)
+                Laser Templating &amp; Install ($250)
               </label>
 
               <label className="inline-check">
