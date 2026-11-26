@@ -20,6 +20,40 @@ import type { CounterDesign, Job, ShapeType } from '../types';
 
 const MAX_HISTORY = 50;
 
+function EdgeProfilePreview({ profile }: { profile: string }) {
+  const opt = EDGE_PROFILES.find((e) => e.name === profile) ?? EDGE_PROFILES[0];
+  let path = 'M 6 10 L 66 10 Q 70 10 70 14 L 70 30 Q 70 34 66 34 L 6 34 Z';
+  switch (profile) {
+    case 'Half Bullnose':
+      path = 'M 6 10 L 54 10 Q 70 10 70 26 L 70 34 L 6 34 Z';
+      break;
+    case 'Bevel':
+      path = 'M 6 10 L 58 10 L 70 22 L 70 34 L 6 34 Z';
+      break;
+    case 'Full Bullnose':
+      path = 'M 6 10 L 58 10 A 12 12 0 0 1 58 34 L 6 34 Z';
+      break;
+    case 'Ogee':
+      path = 'M 6 10 L 48 10 C 56 10 56 20 62 20 C 68 20 70 24 70 34 L 6 34 Z';
+      break;
+    case 'Mitered':
+      path = 'M 6 10 L 70 10 L 70 42 L 54 42 L 54 28 L 6 28 Z';
+      break;
+  }
+
+  return (
+    <div className="edge-preview">
+      <svg width="78" height="46" viewBox="0 0 78 46" aria-hidden="true">
+        <path d={path} fill="#e2e8f0" stroke="#1d5fa8" strokeWidth="2" />
+      </svg>
+      <div>
+        <div className="edge-preview-name">{opt.name}</div>
+        <div className="line-detail">{opt.note}</div>
+      </div>
+    </div>
+  );
+}
+
 export function JobPage() {
   const id = Number(useParams().id);
   const queryClient = useQueryClient();
@@ -183,6 +217,19 @@ export function JobPage() {
       ),
     [material, thickness, edgeProfile, cornerFinish, includeTemplating, includeRemoval, design],
   );
+
+  const hasOverlengthRun = useMemo(() => {
+    for (const piece of design.pieces) {
+      const b = getPieceBounds(piece.points);
+      if (b.width > 120 || b.height > 120) return true;
+      for (let i = 0; i < piece.points.length; i++) {
+        const a = piece.points[i];
+        const next = piece.points[(i + 1) % piece.points.length];
+        if (Math.hypot(next.x - a.x, next.y - a.y) > 120) return true;
+      }
+    }
+    return false;
+  }, [design.pieces]);
 
   const handleSave = () => {
     if (!job) return;
@@ -567,6 +614,7 @@ export function JobPage() {
                   ))}
                 </select>
               </label>
+              <EdgeProfilePreview profile={edgeProfile} />
 
               <label>
                 Outside Corner Finish
@@ -652,6 +700,21 @@ export function JobPage() {
                 <span className="metric-lbl">Est. Slabs (50 sf)</span>
               </div>
             </div>
+            {(hasOverlengthRun || breakdown.metrics.angledCorners > 0) && (
+              <div className="shop-advisories">
+                {hasOverlengthRun && (
+                  <div className="advisory-pill">
+                    Run &gt; 120&quot; — exceeds standard slab length; plan a field seam or jumbo slab.
+                  </div>
+                )}
+                {breakdown.metrics.angledCorners > 0 && (
+                  <div className="advisory-pill info">
+                    {breakdown.metrics.angledCorners} non-90° angled corner
+                    {breakdown.metrics.angledCorners === 1 ? '' : 's'} detected (+$65/corner CNC setup).
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="card quote-card">
