@@ -50,10 +50,25 @@ using (var scope = app.Services.CreateScope())
             CreatedDate = DateTime.UtcNow
         };
 
+        Job chefSuite = new()
+        {
+            CustomerName = "Sample: Chef U-Shape + Island",
+            Material = "Quartzite",
+            Thickness = "3cm",
+            EdgeProfile = "Ogee",
+            CornerFinish = "Clipped",
+            IncludeTemplating = true,
+            ShapeType = "custom",
+            DesignJson = """{"pieces":[{"id":"p1","label":"U-Shape Perimeter","points":[{"x":0,"y":0},{"x":120,"y":0},{"x":120,"y":78},{"x":94.5,"y":78},{"x":94.5,"y":25.5},{"x":25.5,"y":25.5},{"x":25.5,"y":78},{"x":0,"y":78}],"edges":[{"kind":"wall","backsplash":true},{"kind":"wall","backsplash":true},{"kind":"finished","backsplash":false},{"kind":"finished","backsplash":false},{"kind":"finished","backsplash":false},{"kind":"finished","backsplash":false},{"kind":"finished","backsplash":false},{"kind":"wall","backsplash":true}]},{"id":"p2","label":"Center Island","points":[{"x":30,"y":96},{"x":90,"y":96},{"x":90,"y":132},{"x":30,"y":132}],"edges":[{"kind":"finished","backsplash":false},{"kind":"finished","backsplash":false},{"kind":"finished","backsplash":false},{"kind":"finished","backsplash":false}]}],"cutouts":[{"id":"c1","type":"undermount_sink","x":60,"y":13,"width":30,"height":18,"rotation":0},{"id":"c2","type":"faucet","x":60,"y":3,"width":2,"height":2,"rotation":0},{"id":"c3","type":"cooktop","x":13,"y":52,"width":20,"height":30,"rotation":0}],"lines":[{"id":"l1","x1":25.5,"y1":25.5,"x2":0,"y2":0}]}""",
+            Notes = "Multi-piece Quartzite kitchen: U-shape perimeter with seam reference line + 60\"x36\" center island.",
+            CreatedDate = DateTime.UtcNow
+        };
+
         QuoteCalculator.ApplyQuote(kitchen);
         QuoteCalculator.ApplyQuote(bathroom);
+        QuoteCalculator.ApplyQuote(chefSuite);
 
-        db.Jobs.AddRange(kitchen, bathroom);
+        db.Jobs.AddRange(kitchen, bathroom, chefSuite);
         db.SaveChanges();
     }
 }

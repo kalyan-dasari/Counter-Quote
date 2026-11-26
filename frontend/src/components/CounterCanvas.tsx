@@ -827,6 +827,30 @@ export function CounterCanvas({
     setSelection(null);
   };
 
+  // Keyboard Delete / Backspace removes the selected cutout, line, vertex (>3 pts), or piece (>1 piece).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (!selection) return;
+
+      e.preventDefault();
+      if (selection.kind === 'cutout') {
+        removeCutout(selection.cutoutId);
+      } else if (selection.kind === 'line') {
+        removeLine(selection.lineId);
+      } else if (selection.kind === 'vertex') {
+        removeVertex(selection.pieceId, selection.vertexIndex);
+      } else if (selection.kind === 'piece' && design.pieces.length > 1) {
+        deletePiece(selection.pieceId);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
   const materialSwatch = useMemo(
     () => MATERIALS.find((m) => m.name.toLowerCase() === material.toLowerCase())?.swatch ?? '#c8c3ba',
     [material],
