@@ -1,5 +1,6 @@
 using CounterQuote.Api.Data;
 using CounterQuote.Api.Models;
+using CounterQuote.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -24,6 +25,7 @@ public class JobsController(AppDbContext db) : ControllerBase
     {
         job.Id = 0;
         job.CreatedDate = DateTime.UtcNow;
+        QuoteCalculator.ApplyQuote(job);
         db.Jobs.Add(job);
         await db.SaveChangesAsync();
         return CreatedAtAction(nameof(Get), new { id = job.Id }, job);
@@ -38,8 +40,21 @@ public class JobsController(AppDbContext db) : ControllerBase
 
         changes.Id = id;
         changes.CreatedDate = job.CreatedDate;
+        QuoteCalculator.ApplyQuote(changes);
         db.Entry(job).CurrentValues.SetValues(changes);
         await db.SaveChangesAsync();
         return job;
+    }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        Job? job = await db.Jobs.FindAsync(id);
+        if (job is null)
+            return NotFound();
+
+        db.Jobs.Remove(job);
+        await db.SaveChangesAsync();
+        return NoContent();
     }
 }
