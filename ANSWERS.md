@@ -5,10 +5,11 @@
 
 ## 1. What did you need to research, and how did you do it?
 
-I researched how stone countertop fabricators estimate jobs in practice — specifically how shops combine square-foot material + fabrication rates, linear-foot edge profile upgrades, cutout fees, inside corner relief/seaming, slab length limits, and backsplash charges:
-- **Square-foot pricing, slab yield & seam length:** Most shops quote installed base rates per sq. ft. by stone type and thickness (2cm vs. 3cm), factor in ~10% slab yield/waste, apply a minimum job charge for small vanities, and flag runs exceeding ~120" (standard slab length) for field seams.
-- **Edges & corners:** Standard eased edges are typically included in the base rate, while upgraded profiles (Half Bullnose, Bevel, Full Bullnose, Ogee, Mitered) add per-linear-foot charges *only on finished/exposed edges* (never against walls). Concave inside corners (in L- and U-shapes) require CNC radius relief or precision seams, and non-90° walls add templating/setup complexity.
-- **Cutouts & backsplashes:** Undermount sinks cost more than drop-ins because the interior rim must be CNC-polished; cooktops and core-drilled faucet holes are billed per cutout; matching 4" backsplashes are billed per linear foot along wall edges.
+Countertop fabrication was completely new to me before this project, so I started by googling what custom countertops are, how homeowners and shops use them, and looking through existing countertop estimator websites and design references to understand the domain before building:
+
+- **What shops charge for (square footage, waste & seam length):** Most fabricators quote an installed rate per sq. ft. by material and slab thickness (2cm vs. 3cm), include a ~10% slab yield/waste factor, apply a shop minimum for small vanities, and flag runs longer than ~120" (standard slab length) for field seams.
+- **Edges & corners:** Learning what terms like *Eased*, *Bullnose*, *Ogee*, and *Mitered* actually mean led me to create a visual reference guide (`? View Guide` using `EdgeProfiles.png`) right inside the UI. Standard eased edges are usually included in the base rate, while upgraded profiles charge per linear foot *only on exposed finished edges* (not wall edges). Inside corners (L- and U-shapes) and non-90° walls add CNC/templating labor.
+- **Cutouts & backsplashes:** Undermount sinks cost more than drop-ins because the inner rim must be polished; cooktops and faucet holes are priced per cutout; matching 4" backsplashes are priced per linear foot along walls.
 - References consulted:
   - Craft Counters — Countertop pricing & cutout/edge breakdown: https://craftcounters.com
   - SlabWise — Stone fabrication inside corner radius & complexity quoting: https://slabwise.com
@@ -23,7 +24,7 @@ I built a single transparent, itemized pricing model in both [QuoteCalculator.cs
 
 ## 3. How did you use AI? Where did it help, and how did you lead it?
 
-AI helped accelerate boilerplate across the EF Core migration, SVG coordinate transforms (`getScreenCTM().inverse()`), bounding-box resize handles, and matching TypeScript/C# pricing rules. I led the architecture around a unified multi-piece 2D polygon + per-edge metadata + resizable cutout/line schema (`DesignJson`), verified the shoelace area and cross-product inside/angled-corner math against hand-calculated xUnit tests (`JobsControllerTests.cs`), and enforced server-side recalculation on `POST`/`PUT` so persisted quotes are always accurate.
+AI helped accelerate implementation across the EF Core migration, SVG coordinate math (`getScreenCTM().inverse()`), drag/resize handles, and keeping the TypeScript and C# pricing rules in sync. I led the product and UX direction from what I noticed while testing it—insisting on Undo/Redo, click-to-move/resize controls for every selected countertop or cutout, multi-piece + line drawing, visual edge/corner rendering directly on the canvas, and adding the `EdgeProfiles.png` `? View Guide` modal so non-experts can clearly understand the options—while verifying the geometry and pricing calculations with xUnit tests (`JobsControllerTests.cs`).
 
 ## 4. What would you ask an industry expert to check or improve this?
 
