@@ -173,6 +173,10 @@ export function JobPage() {
   // Keyboard shortcuts for Undo / Redo
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowEdgeGuide(false);
+        return;
+      }
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
