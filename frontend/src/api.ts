@@ -1,11 +1,6 @@
-export interface Job {
-  id: number;
-  customerName: string;
-  material: string;
-  createdDate: string;
-}
+import type { Job, NewJob } from './types';
 
-export type NewJob = Pick<Job, 'customerName' | 'material'>;
+export type { Job, NewJob };
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(path, {
@@ -18,6 +13,9 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
     const reasons = problem?.errors ? Object.values(problem.errors).flat().join(' ') : '';
     throw new Error(reasons || `Request failed (${response.status})`);
   }
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return response.json();
 }
 
@@ -25,3 +23,4 @@ export const getJobs = () => request<Job[]>('/api/jobs');
 export const getJob = (id: number) => request<Job>(`/api/jobs/${id}`);
 export const createJob = (job: NewJob) => request<Job>('/api/jobs', 'POST', job);
 export const updateJob = (job: Job) => request<Job>(`/api/jobs/${job.id}`, 'PUT', job);
+export const deleteJob = (id: number) => request<void>(`/api/jobs/${id}`, 'DELETE');
