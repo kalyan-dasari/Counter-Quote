@@ -543,6 +543,9 @@ export function JobPage() {
           <CounterCanvas
             design={design}
             material={material}
+            thickness={thickness}
+            edgeProfile={edgeProfile}
+            cornerFinish={cornerFinish}
             metrics={breakdown.metrics}
             isDrawingLines={isDrawingLines}
             canUndo={past.length > 0}

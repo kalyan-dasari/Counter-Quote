@@ -37,6 +37,9 @@ export type CanvasSelection =
 interface CounterCanvasProps {
   design: CounterDesign;
   material: string;
+  thickness: string;
+  edgeProfile: string;
+  cornerFinish: string;
   metrics: GeometryMetrics;
   isDrawingLines: boolean;
   canUndo: boolean;
@@ -163,9 +166,69 @@ function polygonCentroid(points: Point[]): Point {
   return { x: sx / points.length, y: sy / points.length };
 }
 
+function buildPieceSvgPath(piece: CounterPiece, cornerFinish: string): string {
+  const pts = piece.points;
+  const n = pts.length;
+  if (n < 3) return '';
+
+  const finish = cornerFinish.toLowerCase();
+  if (finish !== 'radius' && finish !== 'clipped') {
+    return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + ' Z';
+  }
+
+  const orientSign = computePolygonOrientation(pts);
+  const chamferDist = finish === 'radius' ? 2.8 : 2.4;
+  const commands: string[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const prev = pts[(i - 1 + n) % n];
+    const curr = pts[i];
+    const next = pts[(i + 1) % n];
+
+    const v1x = curr.x - prev.x;
+    const v1y = curr.y - prev.y;
+    const v2x = next.x - curr.x;
+    const v2y = next.y - curr.y;
+    const len1 = Math.hypot(v1x, v1y);
+    const len2 = Math.hypot(v2x, v2y);
+
+    const prevEdge = piece.edges[(i - 1 + n) % n] ?? { kind: 'finished', backsplash: false };
+    const nextEdge = piece.edges[i] ?? { kind: 'finished', backsplash: false };
+    const cross = v1x * v2y - v1y * v2x;
+    const isOutsideFinished =
+      cross * orientSign > 1e-4 &&
+      prevEdge.kind === 'finished' &&
+      nextEdge.kind === 'finished' &&
+      len1 > chamferDist * 2.5 &&
+      len2 > chamferDist * 2.5;
+
+    if (!isOutsideFinished) {
+      commands.push(`${i === 0 ? 'M' : 'L'} ${curr.x} ${curr.y}`);
+      continue;
+    }
+
+    const pInX = round2(curr.x - (v1x / len1) * chamferDist);
+    const pInY = round2(curr.y - (v1y / len1) * chamferDist);
+    const pOutX = round2(curr.x + (v2x / len2) * chamferDist);
+    const pOutY = round2(curr.y + (v2y / len2) * chamferDist);
+
+    commands.push(`${i === 0 ? 'M' : 'L'} ${pInX} ${pInY}`);
+    if (finish === 'radius') {
+      commands.push(`Q ${curr.x} ${curr.y} ${pOutX} ${pOutY}`);
+    } else {
+      commands.push(`L ${pOutX} ${pOutY}`);
+    }
+  }
+
+  return `${commands.join(' ')} Z`;
+}
+
 export function CounterCanvas({
   design,
   material,
+  thickness,
+  edgeProfile,
+  cornerFinish,
   metrics,
   isDrawingLines,
   canUndo,
@@ -1077,13 +1140,13 @@ export function CounterCanvas({
             const orientSign = computePolygonOrientation(piece.points);
             const bounds = getPieceBounds(piece.points);
             const isPieceSelected = selection?.kind === 'piece' && selection.pieceId === piece.id;
-            const polygonAttr = piece.points.map((p) => `${p.x},${p.y}`).join(' ');
+            const piecePath = buildPieceSvgPath(piece, cornerFinish);
 
             return (
               <g key={piece.id}>
-                {/* Clickable Slab Body */}
-                <polygon
-                  points={polygonAttr}
+                {/* Clickable Slab Body (renders Radius / Clipped outside corners visually) */}
+                <path
+                  d={piecePath}
                   fill={
                     material.toLowerCase() === 'marble' || material.toLowerCase() === 'quartzite'
                       ? 'url(#stone-marble)'
@@ -1126,7 +1189,7 @@ export function CounterCanvas({
                   </text>
                 )}
 
-                {/* Edges & Backsplash */}
+                {/* Edges, Edge Profile Detail & Backsplash */}
                 {piece.points.map((a, idx) => {
                   const b = piece.points[(idx + 1) % piece.points.length];
                   const edge = piece.edges[idx] ?? { kind: 'finished', backsplash: false };
@@ -1144,6 +1207,7 @@ export function CounterCanvas({
                     selection.pieceId === piece.id &&
                     selection.edgeIndex === idx;
                   const isWall = edge.kind === 'wall';
+                  const profile = edgeProfile.toLowerCase();
 
                   return (
                     <g key={`${piece.id}_e_${idx}`}>
@@ -1160,13 +1224,72 @@ export function CounterCanvas({
                         />
                       )}
 
+                      {/* Edge Profile Visual Styling on Finished Edges */}
+                      {!isWall && profile === 'full bullnose' && (
+                        <line
+                          x1={a.x}
+                          y1={a.y}
+                          x2={b.x}
+                          y2={b.y}
+                          stroke={isEdgeSelected ? '#fcd34d' : '#93c5fd'}
+                          strokeWidth={2.4}
+                          strokeLinecap="round"
+                          opacity={0.65}
+                          pointerEvents="none"
+                        />
+                      )}
+                      {!isWall && (profile === 'half bullnose' || profile === 'bevel' || profile === 'ogee') && (
+                        <line
+                          x1={a.x - nx * 0.95}
+                          y1={a.y - ny * 0.95}
+                          x2={b.x - nx * 0.95}
+                          y2={b.y - ny * 0.95}
+                          stroke={isEdgeSelected ? '#f59e0b' : '#60a5fa'}
+                          strokeWidth={0.6}
+                          strokeLinecap="round"
+                          pointerEvents="none"
+                        />
+                      )}
+                      {!isWall && profile === 'ogee' && (
+                        <line
+                          x1={a.x - nx * 1.75}
+                          y1={a.y - ny * 1.75}
+                          x2={b.x - nx * 1.75}
+                          y2={b.y - ny * 1.75}
+                          stroke={isEdgeSelected ? '#fbbf24' : '#93c5fd'}
+                          strokeWidth={0.45}
+                          strokeLinecap="round"
+                          pointerEvents="none"
+                        />
+                      )}
+                      {!isWall && profile === 'mitered' && (
+                        <line
+                          x1={a.x - nx * 1.4}
+                          y1={a.y - ny * 1.4}
+                          x2={b.x - nx * 1.4}
+                          y2={b.y - ny * 1.4}
+                          stroke={isEdgeSelected ? '#f59e0b' : '#3b82f6'}
+                          strokeWidth={0.55}
+                          strokeDasharray="1.8 1"
+                          pointerEvents="none"
+                        />
+                      )}
+
                       <line
                         x1={a.x}
                         y1={a.y}
                         x2={b.x}
                         y2={b.y}
-                        stroke={isEdgeSelected ? '#d97706' : isWall ? '#334155' : '#1d5fa8'}
-                        strokeWidth={isEdgeSelected ? 1.8 : 1.1}
+                        stroke={
+                          isEdgeSelected
+                            ? '#d97706'
+                            : isWall
+                              ? '#334155'
+                              : profile === 'mitered'
+                                ? '#1e3a8a'
+                                : '#1d5fa8'
+                        }
+                        strokeWidth={isEdgeSelected ? 1.9 : !isWall && profile === 'mitered' ? 2.0 : 1.1}
                         strokeDasharray={isWall ? '2.5 1.5' : undefined}
                         strokeLinecap="round"
                         pointerEvents="none"
