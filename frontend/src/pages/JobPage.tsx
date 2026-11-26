@@ -1,21 +1,618 @@
-import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
-import { getJob } from '../api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { getJob, updateJob } from '../api';
+import { CounterCanvas } from '../components/CounterCanvas';
+import {
+  CORNER_FINISHES,
+  EDGE_PROFILES,
+  MATERIALS,
+  THICKNESSES,
+  calculateQuoteBreakdown,
+  createLShapeDesign,
+  createRectangleDesign,
+  createUShapeDesign,
+  formatCurrency,
+  parseDesignJson,
+} from '../quote';
+import type { CounterDesign, Job, ShapeType } from '../types';
 
 export function JobPage() {
   const id = Number(useParams().id);
+  const queryClient = useQueryClient();
   const { data: job, error } = useQuery({ queryKey: ['jobs', id], queryFn: () => getJob(id) });
+
+  const [customerName, setCustomerName] = useState('');
+  const [material, setMaterial] = useState('Granite');
+  const [thickness, setThickness] = useState('3cm');
+  const [edgeProfile, setEdgeProfile] = useState('Eased');
+  const [cornerFinish, setCornerFinish] = useState('Standard');
+  const [includeTemplating, setIncludeTemplating] = useState(true);
+  const [includeRemoval, setIncludeRemoval] = useState(false);
+  const [shapeType, setShapeType] = useState<ShapeType>('rectangle');
+  const [design, setDesign] = useState<CounterDesign>(() => createRectangleDesign());
+  const [notes, setNotes] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
+  const [isDrawingCustom, setIsDrawingCustom] = useState(false);
+
+  // Parametric dimensions for quick preset editing
+  const [rectWidth, setRectWidth] = useState(72);
+  const [rectDepth, setRectDepth] = useState(25.5);
+  const [rectIsland, setRectIsland] = useState(false);
+
+  const [lTopWidth, setLTopWidth] = useState(108);
+  const [lTopDepth, setLTopDepth] = useState(25.5);
+  const [lLeftLen, setLLeftLen] = useState(78);
+  const [lLeftDepth, setLLeftDepth] = useState(25.5);
+  const [lAngle, setLAngle] = useState(90);
+
+  const [uBackWidth, setUBackWidth] = useState(108);
+  const [uLeftLen, setULeftLen] = useState(72);
+  const [uRightLen, setURightLen] = useState(72);
+  const [uDepth, setUDepth] = useState(25.5);
+
+  useEffect(() => {
+    if (!job) return;
+    setCustomerName(job.customerName);
+    setMaterial(job.material || 'Granite');
+    setThickness(job.thickness || '3cm');
+    setEdgeProfile(job.edgeProfile || 'Eased');
+    setCornerFinish(job.cornerFinish || 'Standard');
+    setIncludeTemplating(job.includeTemplating);
+    setIncludeRemoval(job.includeRemoval);
+    const st = (['rectangle', 'l-shape', 'u-shape', 'custom'].includes(job.shapeType)
+      ? job.shapeType
+      : 'rectangle') as ShapeType;
+    setShapeType(st);
+    const parsed = parseDesignJson(job.designJson);
+    setDesign(parsed);
+    setNotes(job.notes || '');
+    setDirty(false);
+    setIsDrawingCustom(false);
+
+    // Sync parametric inputs roughly to loaded bounds if preset matches
+    if (st === 'rectangle' && parsed.points.length === 4) {
+      const xs = parsed.points.map((p) => p.x);
+      const ys = parsed.points.map((p) => p.y);
+      setRectWidth(Math.round((Math.max(...xs) - Math.min(...xs)) * 10) / 10);
+      setRectDepth(Math.round((Math.max(...ys) - Math.min(...ys)) * 10) / 10);
+      setRectIsland(parsed.edges.every((e) => e.kind === 'finished'));
+    }
+  }, [job]);
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: Job) => updateJob(payload),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['jobs', id], updated);
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+      setDirty(false);
+      setSavedNotice(true);
+      window.setTimeout(() => setSavedNotice(false), 2500);
+    },
+  });
+
+  const breakdown = useMemo(
+    () =>
+      calculateQuoteBreakdown(
+        {
+          material,
+          thickness,
+          edgeProfile,
+          cornerFinish,
+          includeTemplating,
+          includeRemoval,
+        },
+        design,
+      ),
+    [material, thickness, edgeProfile, cornerFinish, includeTemplating, includeRemoval, design],
+  );
+
+  const handleSave = () => {
+    if (!job) return;
+    const payload: Job = {
+      ...job,
+      customerName: customerName.trim() || job.customerName,
+      material,
+      thickness,
+      edgeProfile,
+      cornerFinish,
+      includeTemplating,
+      includeRemoval,
+      shapeType,
+      designJson: JSON.stringify(design),
+      areaSqFt: breakdown.metrics.areaSqFt,
+      finishedEdgeLinFt: breakdown.metrics.finishedEdgeLinFt,
+      backsplashLinFt: breakdown.metrics.backsplashLinFt,
+      insideCorners: breakdown.metrics.insideCorners,
+      outsideFinishedCorners: breakdown.metrics.outsideFinishedCorners,
+      angledCorners: breakdown.metrics.angledCorners,
+      cutoutCount: breakdown.metrics.cutoutCount,
+      totalPrice: breakdown.totalPrice,
+      notes,
+    };
+    saveMutation.mutate(payload);
+  };
+
+  const selectShapePreset = (nextShape: ShapeType) => {
+    setIsDrawingCustom(false);
+    setShapeType(nextShape);
+    setDirty(true);
+    if (nextShape === 'rectangle') {
+      const next = createRectangleDesign(rectWidth, rectDepth, rectIsland);
+      setDesign({ ...next, cutouts: design.cutouts });
+    } else if (nextShape === 'l-shape') {
+      const next = createLShapeDesign(lTopWidth, lTopDepth, lLeftLen, lLeftDepth, lAngle);
+      setDesign({ ...next, cutouts: design.cutouts });
+    } else if (nextShape === 'u-shape') {
+      const next = createUShapeDesign(uBackWidth, uLeftLen, uRightLen, uDepth);
+      setDesign({ ...next, cutouts: design.cutouts });
+    } else {
+      setIsDrawingCustom(true);
+    }
+  };
+
+  const applyRectParams = (w: number, d: number, island: boolean) => {
+    setRectWidth(w);
+    setRectDepth(d);
+    setRectIsland(island);
+    const next = createRectangleDesign(w, d, island);
+    setDesign((prev) => ({ ...next, cutouts: prev.cutouts }));
+    setDirty(true);
+  };
+
+  const applyLParams = (tw: number, td: number, ll: number, ld: number, ang: number) => {
+    setLTopWidth(tw);
+    setLTopDepth(td);
+    setLLeftLen(ll);
+    setLLeftDepth(ld);
+    setLAngle(ang);
+    const next = createLShapeDesign(tw, td, ll, ld, ang);
+    setDesign((prev) => ({ ...next, cutouts: prev.cutouts }));
+    setDirty(true);
+  };
+
+  const applyUParams = (bw: number, ll: number, rl: number, d: number) => {
+    setUBackWidth(bw);
+    setULeftLen(ll);
+    setURightLen(rl);
+    setUDepth(d);
+    const next = createUShapeDesign(bw, ll, rl, d);
+    setDesign((prev) => ({ ...next, cutouts: prev.cutouts }));
+    setDirty(true);
+  };
 
   if (error) return <p className="errors">{error.message}</p>;
   if (!job) return <p>Loading…</p>;
 
   return (
-    <>
-      <h1>{job.customerName}</h1>
-      <p className="muted">{job.material}</p>
-      <section className="card">
-        <p className="muted">Your drawing and price go here.</p>
-      </section>
-    </>
+    <div className="job-workspace">
+      <div className="job-topbar">
+        <div className="job-title-group">
+          <Link to="/" className="back-link no-print">
+            ← All Jobs
+          </Link>
+          <input
+            className="customer-input"
+            value={customerName}
+            onChange={(e) => {
+              setCustomerName(e.target.value);
+              setDirty(true);
+            }}
+            aria-label="Customer name"
+          />
+          {dirty ? (
+            <span className="status-pill unsaved no-print">Unsaved changes</span>
+          ) : savedNotice ? (
+            <span className="status-pill saved no-print">Saved</span>
+          ) : null}
+        </div>
+        <div className="toolbar-group no-print">
+          <button type="button" className="btn-chip" onClick={() => window.print()}>
+            Print Quote
+          </button>
+          <button
+            type="button"
+            className="button"
+            onClick={handleSave}
+            disabled={saveMutation.isPending}
+          >
+            {saveMutation.isPending ? 'Saving…' : 'Save Quote'}
+          </button>
+        </div>
+      </div>
+
+      {saveMutation.error && <p className="errors">{saveMutation.error.message}</p>}
+
+      <div className="workspace-grid">
+        {/* Left: Shape Controls & Interactive Drawing Canvas */}
+        <section className="drawing-column">
+          <div className="card shape-panel no-print">
+            <div className="shape-tabs">
+              <span className="toolbar-label">Counter Shape:</span>
+              {(['rectangle', 'l-shape', 'u-shape'] as ShapeType[]).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  className={`btn-tab ${shapeType === st && !isDrawingCustom ? 'active' : ''}`}
+                  onClick={() => selectShapePreset(st)}
+                >
+                  {st === 'rectangle' ? 'Rectangle' : st === 'l-shape' ? 'L-Shape' : 'U-Shape'}
+                </button>
+              ))}
+              <button
+                type="button"
+                className={`btn-tab ${shapeType === 'custom' || isDrawingCustom ? 'active' : ''}`}
+                onClick={() => selectShapePreset('custom')}
+              >
+                {isDrawingCustom ? 'Drawing Custom…' : 'Draw Freehand / Custom'}
+              </button>
+            </div>
+
+            {shapeType === 'rectangle' && !isDrawingCustom && (
+              <div className="param-row">
+                <label>
+                  Width (in)
+                  <input
+                    type="number"
+                    min={12}
+                    max={240}
+                    step={0.5}
+                    value={rectWidth}
+                    onChange={(e) => applyRectParams(Number(e.target.value) || 12, rectDepth, rectIsland)}
+                  />
+                </label>
+                <label>
+                  Depth (in)
+                  <input
+                    type="number"
+                    min={12}
+                    max={96}
+                    step={0.5}
+                    value={rectDepth}
+                    onChange={(e) => applyRectParams(rectWidth, Number(e.target.value) || 12, rectIsland)}
+                  />
+                </label>
+                <label className="inline-check">
+                  <input
+                    type="checkbox"
+                    checked={rectIsland}
+                    onChange={(e) => applyRectParams(rectWidth, rectDepth, e.target.checked)}
+                  />
+                  Island (all 4 edges finished)
+                </label>
+              </div>
+            )}
+
+            {shapeType === 'l-shape' && !isDrawingCustom && (
+              <div className="param-row">
+                <label>
+                  Top Run (in)
+                  <input
+                    type="number"
+                    min={36}
+                    max={240}
+                    step={0.5}
+                    value={lTopWidth}
+                    onChange={(e) =>
+                      applyLParams(Number(e.target.value) || 36, lTopDepth, lLeftLen, lLeftDepth, lAngle)
+                    }
+                  />
+                </label>
+                <label>
+                  Top Depth (in)
+                  <input
+                    type="number"
+                    min={12}
+                    max={60}
+                    step={0.5}
+                    value={lTopDepth}
+                    onChange={(e) =>
+                      applyLParams(lTopWidth, Number(e.target.value) || 12, lLeftLen, lLeftDepth, lAngle)
+                    }
+                  />
+                </label>
+                <label>
+                  Left Leg (in)
+                  <input
+                    type="number"
+                    min={36}
+                    max={240}
+                    step={0.5}
+                    value={lLeftLen}
+                    onChange={(e) =>
+                      applyLParams(lTopWidth, lTopDepth, Number(e.target.value) || 36, lLeftDepth, lAngle)
+                    }
+                  />
+                </label>
+                <label>
+                  Left Depth (in)
+                  <input
+                    type="number"
+                    min={12}
+                    max={60}
+                    step={0.5}
+                    value={lLeftDepth}
+                    onChange={(e) =>
+                      applyLParams(lTopWidth, lTopDepth, lLeftLen, Number(e.target.value) || 12, lAngle)
+                    }
+                  />
+                </label>
+                <label>
+                  Corner Angle (°)
+                  <input
+                    type="number"
+                    min={45}
+                    max={135}
+                    step={1}
+                    value={lAngle}
+                    onChange={(e) =>
+                      applyLParams(lTopWidth, lTopDepth, lLeftLen, lLeftDepth, Number(e.target.value) || 90)
+                    }
+                  />
+                </label>
+              </div>
+            )}
+
+            {shapeType === 'u-shape' && !isDrawingCustom && (
+              <div className="param-row">
+                <label>
+                  Back Width (in)
+                  <input
+                    type="number"
+                    min={60}
+                    max={240}
+                    step={0.5}
+                    value={uBackWidth}
+                    onChange={(e) =>
+                      applyUParams(Number(e.target.value) || 60, uLeftLen, uRightLen, uDepth)
+                    }
+                  />
+                </label>
+                <label>
+                  Left Leg (in)
+                  <input
+                    type="number"
+                    min={36}
+                    max={180}
+                    step={0.5}
+                    value={uLeftLen}
+                    onChange={(e) =>
+                      applyUParams(uBackWidth, Number(e.target.value) || 36, uRightLen, uDepth)
+                    }
+                  />
+                </label>
+                <label>
+                  Right Leg (in)
+                  <input
+                    type="number"
+                    min={36}
+                    max={180}
+                    step={0.5}
+                    value={uRightLen}
+                    onChange={(e) =>
+                      applyUParams(uBackWidth, uLeftLen, Number(e.target.value) || 36, uDepth)
+                    }
+                  />
+                </label>
+                <label>
+                  Depth (in)
+                  <input
+                    type="number"
+                    min={12}
+                    max={48}
+                    step={0.5}
+                    value={uDepth}
+                    onChange={(e) =>
+                      applyUParams(uBackWidth, uLeftLen, uRightLen, Number(e.target.value) || 12)
+                    }
+                  />
+                </label>
+              </div>
+            )}
+
+            {shapeType === 'custom' && !isDrawingCustom && (
+              <div className="param-row">
+                <span className="muted">
+                  Custom polygon ({design.points.length} corners). Drag corners to reshape, click any edge to
+                  split/bumpout or toggle wall/finished, or click <strong>Draw Freehand / Custom</strong> to redraw.
+                </span>
+              </div>
+            )}
+          </div>
+
+          <CounterCanvas
+            design={design}
+            material={material}
+            metrics={breakdown.metrics}
+            isDrawingCustom={isDrawingCustom}
+            onDesignChange={(next, convertedToCustom) => {
+              setDesign(next);
+              if (convertedToCustom) setShapeType('custom');
+              setDirty(true);
+            }}
+            onFinishCustomDraw={() => {
+              setIsDrawingCustom(false);
+              setShapeType('custom');
+            }}
+            onCancelCustomDraw={() => {
+              setIsDrawingCustom(false);
+              if (design.points.length < 3) {
+                setShapeType('rectangle');
+                setDesign(createRectangleDesign());
+              }
+            }}
+          />
+        </section>
+
+        {/* Right: Material Options & Live Itemized Quote */}
+        <aside className="quote-column">
+          <div className="card">
+            <h2>Specifications</h2>
+            <div className="specs-form">
+              <label>
+                Material
+                <select
+                  value={material}
+                  onChange={(e) => {
+                    setMaterial(e.target.value);
+                    setDirty(true);
+                  }}
+                >
+                  {MATERIALS.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {m.name} (${m.ratePerSqFt}/sq ft)
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Slab Thickness
+                <select
+                  value={thickness}
+                  onChange={(e) => {
+                    setThickness(e.target.value);
+                    setDirty(true);
+                  }}
+                >
+                  {THICKNESSES.map((t) => (
+                    <option key={t.name} value={t.name}>
+                      {t.label} {t.adderPerSqFt > 0 ? `(+$${t.adderPerSqFt}/sq ft)` : '(Base)'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Edge Profile
+                <select
+                  value={edgeProfile}
+                  onChange={(e) => {
+                    setEdgeProfile(e.target.value);
+                    setDirty(true);
+                  }}
+                >
+                  {EDGE_PROFILES.map((ep) => (
+                    <option key={ep.name} value={ep.name}>
+                      {ep.name} {ep.ratePerLinFt > 0 ? `(+$${ep.ratePerLinFt}/lin ft)` : '(Included)'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Outside Corner Finish
+                <select
+                  value={cornerFinish}
+                  onChange={(e) => {
+                    setCornerFinish(e.target.value);
+                    setDirty(true);
+                  }}
+                >
+                  {CORNER_FINISHES.map((cf) => (
+                    <option key={cf.name} value={cf.name}>
+                      {cf.name} {cf.ratePerCorner > 0 ? `(+$${cf.ratePerCorner}/corner)` : '(Included)'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={includeTemplating}
+                  onChange={(e) => {
+                    setIncludeTemplating(e.target.checked);
+                    setDirty(true);
+                  }}
+                />
+                Laser Templating & Install ($250)
+              </label>
+
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={includeRemoval}
+                  onChange={(e) => {
+                    setIncludeRemoval(e.target.checked);
+                    setDirty(true);
+                  }}
+                />
+                Old Counter Tear-Out ($10/sq ft)
+              </label>
+
+              <label>
+                Shop Notes
+                <textarea
+                  rows={2}
+                  value={notes}
+                  placeholder="Sink model, seam preferences, overhang details…"
+                  onChange={(e) => {
+                    setNotes(e.target.value);
+                    setDirty(true);
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="card metrics-card">
+            <h2>Measured Geometry</h2>
+            <div className="metrics-grid">
+              <div>
+                <span className="metric-val">{breakdown.metrics.areaSqFt}</span>
+                <span className="metric-lbl">Sq Ft</span>
+              </div>
+              <div>
+                <span className="metric-val">{breakdown.metrics.finishedEdgeLinFt}</span>
+                <span className="metric-lbl">Finished Lin Ft</span>
+              </div>
+              <div>
+                <span className="metric-val">{breakdown.metrics.backsplashLinFt}</span>
+                <span className="metric-lbl">Backsplash Lin Ft</span>
+              </div>
+              <div>
+                <span className="metric-val">{breakdown.metrics.insideCorners}</span>
+                <span className="metric-lbl">Inside Corners</span>
+              </div>
+              <div>
+                <span className="metric-val">{breakdown.metrics.cutoutCount}</span>
+                <span className="metric-lbl">Cutouts</span>
+              </div>
+              <div>
+                <span className="metric-val">{breakdown.metrics.estimatedSlabs}</span>
+                <span className="metric-lbl">Est. Slabs (50 sf)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="card quote-card">
+            <h2>Itemized Quote</h2>
+            {breakdown.lines.length === 0 ? (
+              <p className="muted">Draw a countertop shape to calculate a quote.</p>
+            ) : (
+              <>
+                <ul className="quote-lines">
+                  {breakdown.lines.map((line, i) => (
+                    <li key={i}>
+                      <div>
+                        <div className="line-title">{line.label}</div>
+                        <div className="line-detail">{line.detail}</div>
+                      </div>
+                      <div className="line-amount">{formatCurrency(line.amount)}</div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="quote-total">
+                  <span>Estimated Total</span>
+                  <strong>{formatCurrency(breakdown.totalPrice)}</strong>
+                </div>
+              </>
+            )}
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }

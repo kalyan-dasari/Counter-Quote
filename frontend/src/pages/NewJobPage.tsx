@@ -2,14 +2,22 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createJob } from '../api';
+import { MATERIALS, createDefaultDesignForShape } from '../quote';
+import type { ShapeType } from '../types';
 
-const MATERIALS = ['Granite', 'Quartz', 'Marble'];
+const SHAPES: Array<{ value: ShapeType; label: string; desc: string }> = [
+  { value: 'rectangle', label: 'Rectangle', desc: 'Straight run or island' },
+  { value: 'l-shape', label: 'L-Shape', desc: 'Two legs with inside corner' },
+  { value: 'u-shape', label: 'U-Shape', desc: 'Three legs, two inside corners' },
+  { value: 'custom', label: 'Custom / Freehand', desc: 'Start with a rectangle and draw/edit points' },
+];
 
 export function NewJobPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [customerName, setCustomerName] = useState('');
-  const [material, setMaterial] = useState(MATERIALS[0]);
+  const [material, setMaterial] = useState(MATERIALS[0].name);
+  const [shapeType, setShapeType] = useState<ShapeType>('rectangle');
 
   const save = useMutation({
     mutationFn: createJob,
@@ -21,25 +29,52 @@ export function NewJobPage() {
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    save.mutate({ customerName, material });
+    const initialDesign = createDefaultDesignForShape(shapeType);
+    save.mutate({
+      customerName,
+      material,
+      shapeType,
+      designJson: JSON.stringify(initialDesign),
+    });
   };
 
   return (
     <>
-      <h1>New job</h1>
+      <h1>New Countertop Job</h1>
       {save.error && <p className="errors">{save.error.message}</p>}
       <form className="card form" onSubmit={handleSubmit}>
         <label>
-          Customer
-          <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} required />
+          Customer Name
+          <input
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            placeholder="e.g. Rivera Kitchen"
+            required
+          />
         </label>
         <label>
           Material
           <select value={material} onChange={(e) => setMaterial(e.target.value)}>
-            {MATERIALS.map((m) => <option key={m}>{m}</option>)}
+            {MATERIALS.map((m) => (
+              <option key={m.name} value={m.name}>
+                {m.name} (${m.ratePerSqFt}/sq ft)
+              </option>
+            ))}
           </select>
         </label>
-        <button type="submit" className="button" disabled={save.isPending}>Save job</button>
+        <label>
+          Starting Shape
+          <select value={shapeType} onChange={(e) => setShapeType(e.target.value as ShapeType)}>
+            {SHAPES.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label} — {s.desc}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className="button" disabled={save.isPending}>
+          {save.isPending ? 'Creating…' : 'Create & Draw Counter'}
+        </button>
       </form>
     </>
   );
