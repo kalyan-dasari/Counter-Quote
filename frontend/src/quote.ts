@@ -301,7 +301,7 @@ export function computeGeometryMetrics(design: CounterDesign): GeometryMetrics {
     const v1x = curr.x - prev.x;
     const v1y = curr.y - prev.y;
     const v2x = next.x - curr.x;
-    const v2y = next.Y !== undefined ? (next as unknown as { Y: number }).Y - curr.y : next.y - curr.y;
+    const v2y = next.y - curr.y;
 
     if (Math.hypot(v1x, v1y) < 1e-4 || Math.hypot(v2x, v2y) < 1e-4) continue;
 
